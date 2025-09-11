@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Expense Tracker App — Improved</title>
+    <link rel="shortcut icon" href="https://i.postimg.cc/5yRksKpM/Gemini-Generated-Image-944zqr944zqr944z-1.png" type="image/x-icon">
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        :root{
+            --nav-height: 88px; /* used to calculate safe spacing */
+        }
+
+        body {
+            font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
+            transition: background-color 0.35s ease, color 0.35s ease;
+            --color-primary-rgb: 37, 99, 235;
+            --color-bg-base: #f8f9fa;
+            --color-bg-card: #ffffff;
+            --color-bg-input: #eef2f6;
+            --color-text-base: #212529;
+            --color-text-secondary: #6c757d;
+            -webkit-font-smoothing:antialiased;
+            -moz-osx-font-smoothing:grayscale;
+        }
+
+        body.dark {
+            --color-bg-base: #0b0b0c;
+            --color-bg-card: #111214;
+            --color-bg-input: #151617;
+            --color-text-base: #e6eef8;
+            --color-text-secondary: #9aa4b2;
+        }
+
+        .bg-base { background-color: var(--color-bg-base); }
+        .bg-card { background-color: var(--color-bg-card); }
+        .bg-input { background-color: var(--color-bg-input); }
+        .text-base { color: var(--color-text-base); }
+        .text-secondary { color: var(--color-text-secondary); }
+        .bg-primary { background-color: rgb(var(--color-primary-rgb)); }
+        .text-primary { color: rgb(var(--color-primary-rgb)); }
+        .ring-primary { --tw-ring-color: rgb(var(--color-primary-rgb)); }
+        .border-primary { border-color: rgb(var(--color-primary-rgb)); }
+
+        /* Form label pinned above inputs — non-interactive so it won't cause shifts */
+        .form-label {
+            position: absolute;
+            top: -0.7rem;
+            left: 0.9rem;
+            padding: 0 0.35rem;
+            font-size: 0.875rem;
+            font-weight: 600;
+            pointer-events: none;
+            transition: color 0.25s ease, background-color 0.25s ease;
+            background: var(--color-bg-card);
+            color: var(--color-text-secondary);
+            border-radius: 6px;
+        }
+
+        /* --- Improved, smoother animations --- */
+        .card-lift-hover {
+            transition-property: transform, box-shadow;
+            transition-duration: 360ms;
+            transition-timing-function: cubic-bezier(.15,.9,.34,1);
+            will-change: transform;
+        }
+        .card-lift-hover:hover {
+            transform: translateY(-10px) scale(1.015);
+            box-shadow: 0 20px 40px rgba(2,6,23,0.12);
+        }
+
+        /* Fancy but non-jittery 'liquid' button using scale on pseudo-element (GPU-accelerated)
+           avoids width/height transitions which cause layout repaint jitter */
+        .liquid-button {
+            position: relative;
+            overflow: hidden;
+            z-index: 1;
+            will-change: transform;
+            backface-visibility: hidden;
+        }
+        .liquid-button::before{
+            content: '';
+            position: absolute;
+            inset: -20% -20%; /* keep it larger than the button so scaling doesn't reveal edges */
+            background: rgba(255,255,255,0.12);
+            transform: scale(0);
+            border-radius: 50%;
+            transition: transform 420ms cubic-bezier(.2,.9,.3,1);
+            pointer-events: none;
+            z-index: 0;
+        }
+        .liquid-button:hover::before{
+            transform: scale(1);
+        }
+
+        .press-effect{
+            transition: transform 160ms ease, box-shadow 160ms ease;
+            will-change: transform;
+        }
+        .press-effect:active{ transform: translateY(1px) scale(.995); }
+
+        /* Subtle icon 'bounce' but play once per hover to prevent constant motion */
+        .icon-bounce:hover{
+            animation: bounce 520ms cubic-bezier(.2,.9,.3,1) both;
+        }
+        @keyframes bounce{
+            0%{ transform: translateY(0); }
+            40%{ transform: translateY(-6px); }
+            100%{ transform: translateY(0); }
+        }
+
+        /* Prevent jitter from focus outlines — use focus-visible to show accessible rings without layout shift */
+        input, button, select { outline: none; }
+        input:focus-visible, button:focus-visible, select:focus-visible{
+            outline: none;
+            box-shadow: 0 0 0 4px rgba(var(--color-primary-rgb),0.12), 0 6px 18px rgba(2,6,23,0.06);
+            border-radius: 12px;
+        }
+
+        /* Reduce motion respect */
+        @media (prefers-reduced-motion: reduce){
+            *{ transition: none !important; animation: none !important; }
+        }
+
+        /* Make sure floating actions have space from the bottom nav (safe area aware) */
+        .app-wrapper{ padding-bottom: calc(var(--nav-height) + 56px); }
+
+        /* small screens adjustments */
+        @media (max-width:420px){
+            .app-wrapper{ padding-left: 14px; padding-right: 14px; }
+        }
+
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const keywordMap = {
+            'uber': 'Transport', 'cng': 'Transport', 'bus': 'Transport', 'ride': 'Transport',
+            'food': 'Food', 'restaurant': 'Food', 'groceries': 'Groceries', 'supermarket': 'Groceries',
+            'internet': 'Utilities', 'data': 'Utilities', 'electricity': 'Utilities',
+            'tech': 'Tech', 'phone': 'Tech',
+            'clothing': 'Clothing', 'shirt': 'Clothing', 'tshirt': 'Clothing',
+            'shopping': 'Shopping', 'coke': 'Drinks', 'sprite': 'Drinks',
+            'admission fee': 'Education', 'udvash': 'Education', 'books': 'Education',
+            'bank': 'Banking', 'deposit': 'Banking',
+        };
+
+        const getCategory = (description) => {
+            const lowerCaseDescription = description.toLowerCase();
+            for (const keyword in keywordMap) {
+                if (lowerCaseDescription.includes(keyword)) {
+                    return keywordMap[keyword];
+                }
+            }
+            return 'Miscellaneous';
+        };
+
+        const App = () => {
+            const [amount, setAmount] = React.useState('');
+            const [description, setDescription] = React.useState('');
+            const [date, setDate] = React.useState(new Date().toISOString().split('T')[0]);
+            const [paymentMethod, setPaymentMethod] = React.useState('Cash');
+            const [isMajor, setIsMajor] = React.useState('No');
+            const [expenses, setExpenses] = React.useState(() => {
+                const savedExpenses = localStorage.getItem('expenses');
+                return savedExpenses ? JSON.parse(savedExpenses) : [];
+            });
+            const [isLoading, setIsLoading] = React.useState(false);
+            const [view, setView] = React.useState('dashboard');
+            const [message, setMessage] = React.useState('');
+            const [messageType, setMessageType] = React.useState('');
+            const [theme, setTheme] = React.useState(() => localStorage.getItem('theme') || 'dark');
+            const [primaryColor, setPrimaryColor] = React.useState(() => localStorage.getItem('primaryColor') || '37, 99, 235');
+            const [todaysCost, setTodaysCost] = React.useState(0);
+            const [monthlyCost, setMonthlyCost] = React.useState(0);
+            const [balances, setBalances] = React.useState({});
+            const [totalBalance, setTotalBalance] = React.useState(0);
+
+            const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyTKjpOrs329QzKR5iMsfGIdYdAmgsKmiIimTKgNhB09Hib7HFZK8WPgS6dbNSjgWiX/exec';
+            const paymentMethods = ['Cash', 'Debit Card', 'bKash', 'Nexus Pay'];
+            const majorExpenseOptions = ['No', 'Yes'];
+
+            React.useEffect(() => {
+                document.body.className = theme;
+                localStorage.setItem('theme', theme);
+            }, [theme]);
+
+            React.useEffect(() => {
+                document.body.style.setProperty('--color-primary-rgb', primaryColor);
+                localStorage.setItem('primaryColor', primaryColor);
+            }, [primaryColor]);
+
+            React.useEffect(() => {
+                localStorage.setItem('expenses', JSON.stringify(expenses));
+            }, [expenses]);
+
+            React.useEffect(() => {
+                const calculatedTotal = Object.values(balances).reduce((sum, balance) => sum + balance, 0);
+                setTotalBalance(calculatedTotal);
+            }, [balances]);
+
+            React.useEffect(() => {
+                const fetchData = async () => {
+                    try {
+                        const response = await fetch(SCRIPT_URL);
+                        if (!response.ok) {
+                            throw new Error('Network response was not ok');
+                        }
+                        const data = await response.json();
+                        setTodaysCost(data.todaysCost || 0);
+                        setMonthlyCost(data.monthlyCost || 0);
+                        setBalances(data.balances || {});
+                    } catch (error) {
+                        console.error('Failed to fetch data:', error);
+                        showMessage('Failed to load data from Google Sheets.', 'error');
+                    }
+                };
+                fetchData();
+            }, [SCRIPT_URL]);
+
+            const showMessage = (text, type) => {
+                setMessage(text);
+                setMessageType(type);
+                setTimeout(() => { setMessage(''); setMessageType(''); }, 3000);
+            };
+
+            const handleSaveData = async () => {
+                if (!amount || !description) { showMessage('Please fill in both Amount and Description.', 'error'); return; }
+                if (SCRIPT_URL === 'PASTE_YOUR_NEW_URL_HERE') { showMessage('Please configure your Google Apps Script URL first.', 'error'); return; }
+                setIsLoading(true);
+                const expenseData = {
+                    action: 'add', id: Date.now(), date,
+                    amount: parseFloat(amount), description, paymentMethod,
+                    isMajor: isMajor === 'Yes', category: getCategory(description),
+                };
+
+                try {
+                    await fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify(expenseData) });
+                    setExpenses(prev => [expenseData, ...prev].slice(0, 7));
+                    showMessage('Expense saved successfully to Google Sheets!', 'success');
+                    setAmount(''); setDescription(''); setPaymentMethod('Cash'); setIsMajor('No');
+                    const updatedBalances = { ...balances };
+                    if (updatedBalances[paymentMethod] !== undefined) {
+                        updatedBalances[paymentMethod] -= parseFloat(amount);
+                    }
+                    setBalances(updatedBalances);
+                    setTodaysCost(prev => prev + parseFloat(amount));
+                    setMonthlyCost(prev => prev + parseFloat(amount));
+                } catch (e) {
+                    console.error('Failed to save data:', e);
+                    showMessage('Failed to save expense. Check your script URL and permissions.', 'error');
+                } finally { setIsLoading(false); }
+            };
+
+            const handleDelete = async (idToDelete, amountToDelete, methodToDelete) => {
+                if (SCRIPT_URL === 'PASTE_YOUR_NEW_URL_HERE') { showMessage('Please configure your Google Apps Script URL first.', 'error'); return; }
+                const confirmDelete = window.confirm("Are you sure you want to delete this expense?"); if (!confirmDelete) return;
+                setIsLoading(true);
+                try {
+                    await fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify({ action: 'delete', id: idToDelete }), });
+                    const updatedExpenses = expenses.filter(expense => expense.id !== idToDelete);
+                    setExpenses(updatedExpenses);
+                    showMessage('Expense deleted successfully.', 'success');
+                    const updatedBalances = { ...balances };
+                    if (updatedBalances[methodToDelete] !== undefined) {
+                        updatedBalances[methodToDelete] += parseFloat(amountToDelete);
+                    }
+                    setBalances(updatedBalances);
+                    setTodaysCost(prev => prev - parseFloat(amountToDelete));
+                    setMonthlyCost(prev => prev - parseFloat(amountToDelete));
+                } catch (e) {
+                    console.error('Failed to delete expense from Google Sheets:', e);
+                    showMessage('Failed to delete expense. Check your script URL and permissions.', 'error');
+                } finally { setIsLoading(false); }
+            };
+
+            const renderForm = () => (
+                <div className="bg-card p-6 rounded-3xl shadow-lg mb-6 transition-colors card-lift-hover">
+                    <h2 className="text-xl font-semibold mb-6 text-base">New Expense</h2>
+                    <div className="space-y-6">
+                        <div className="relative">
+                            <label className="form-label bg-card">Amount (BDT)</label>
+                            <input
+                                type="number"
+                                value={amount}
+                                onChange={(e) => setAmount(e.target.value)}
+                                placeholder="500"
+                                className="w-full p-4 border border-gray-300 rounded-xl focus:outline-none focus-visible:ring-0 text-base transition-colors bg-input"
+                            />
+                        </div>
+                        <div className="relative">
+                            <label className="form-label bg-card">Description</label>
+                            <input
+                                type="text"
+                                value={description}
+                                onChange={(e) => setDescription(e.target.value)}
+                                placeholder="Bus ticket to DU"
+                                className="w-full p-4 border border-gray-300 rounded-xl focus:outline-none focus-visible:ring-0 text-base transition-colors bg-input"
+                            />
+                        </div>
+                        <div className="relative">
+                            <label className="form-label bg-card">Date</label>
+                            <input
+                                type="date"
+                                value={date}
+                                onChange={(e) => setDate(e.target.value)}
+                                className="w-full p-4 border border-gray-300 rounded-xl focus:outline-none focus-visible:ring-0 text-base transition-colors bg-input"
+                            />
+                        </div>
+
+                        <div>
+                            <label className="block mb-2 text-sm font-medium text-secondary">Payment Method</label>
+                            <div className="flex flex-wrap gap-2">
+                                {paymentMethods.map(method => (
+                                    <button
+                                        key={method}
+                                        onClick={() => setPaymentMethod(method)}
+                                        className={`px-4 py-2 rounded-full font-semibold text-sm transition-colors press-effect ${paymentMethod === method ? 'bg-primary text-white' : 'bg-input text-secondary hover:bg-gray-300 dark:hover:bg-gray-700'}`}
+                                    >{method}</button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="block mb-2 text-sm font-medium text-secondary">Major Expense?</label>
+                            <div className="flex gap-2">
+                                {majorExpenseOptions.map(option => (
+                                    <button key={option} onClick={() => setIsMajor(option)} className={`px-4 py-2 rounded-full font-semibold text-sm transition-colors press-effect ${isMajor === option ? 'bg-primary text-white' : 'bg-input text-secondary hover:bg-gray-300 dark:hover:bg-gray-700'}`}>{option}</button>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+
+                    <button
+                        onClick={handleSaveData}
+                        className="w-full mt-6 bg-primary text-white font-bold p-4 rounded-xl hover:translate-y-[-2px] transition-transform press-effect flex items-center justify-center liquid-button"
+                        disabled={isLoading}
+                    >
+                        {isLoading ? (
+                            <>
+                                <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                                Saving...
+                            </>
+                        ) : 'Save Expense'}
+                    </button>
+                </div>
+            );
+
+            const renderList = () => (
+                <div className="mt-8 space-y-4">
+                    <h2 className="text-xl font-semibold mb-4 text-base text-center">Recent Expenses</h2>
+                    {expenses.length > 0 ? (
+                        expenses.map((item) => (
+                            <div key={item.id} className="bg-card p-4 rounded-xl shadow-sm flex justify-between items-center transition-colors border-l-4 border-primary card-lift-hover">
+                                <div className="flex-1">
+                                    <h4 className="font-bold text-base">{item.description}</h4>
+                                    <p className="text-sm text-secondary"><span className="font-medium text-primary">{item.category}</span> - Paid with: {item.paymentMethod}</p>
+                                    <p className="text-xs text-secondary mt-1">Date: {item.date}</p>
+                                </div>
+                                <div className="text-right ml-4 flex items-center">
+                                    <p className={`font-semibold text-lg ${item.isMajor ? 'text-red-600' : 'text-green-600'}`}>BDT {item.amount}</p>
+                                    <button onClick={() => handleDelete(item.id, item.amount, item.paymentMethod)} className="ml-4 p-2 text-red-500 hover:text-red-700 transition-colors">
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm6 0a1 1 0 11-2 0v6a1 1 0 112 0V8z" clipRule="evenodd" /></svg>
+                                    </button>
+                                </div>
+                            </div>
+                        ))
+                    ) : (
+                        <p className="text-center text-secondary">No expenses logged yet. Add one!</p>
+                    )}
+                </div>
+            );
+
+            const renderDashboard = () => (
+                <div className="mt-8">
+                    <div className="grid grid-cols-2 gap-4 mb-6">
+                        <div className="bg-card p-6 rounded-3xl shadow-lg flex flex-col items-start transition-colors card-lift-hover">
+                            <p className="text-sm text-secondary mb-1">Today's Cost</p>
+                            <p className="text-2xl font-bold text-base">BDT {parseFloat(todaysCost).toFixed(2)}</p>
+                        </div>
+                        <div className="bg-card p-6 rounded-3xl shadow-lg flex flex-col items-start transition-colors card-lift-hover">
+                            <p className="text-sm text-secondary mb-1">Monthly Cost</p>
+                            <p className="text-2xl font-bold text-base">BDT {parseFloat(monthlyCost).toFixed(2)}</p>
+                        </div>
+                        <div className="bg-card p-6 rounded-3xl shadow-lg flex flex-col items-start transition-colors col-span-2 card-lift-hover">
+                             <p className="text-sm text-secondary mb-1">Total Available</p>
+                             <p className="text-2xl font-bold text-base">BDT {parseFloat(totalBalance).toFixed(2)}</p>
+                         </div>
+                    </div>
+
+                    <div className="bg-card p-6 rounded-3xl shadow-lg mb-6 transition-colors card-lift-hover">
+                        <h3 className="text-xl font-semibold mb-4 text-base">Current Balances</h3>
+                        <div className="space-y-3">
+                            {Object.entries(balances || {}).map(([method, balance]) => (
+                                <div key={method} className="flex justify-between items-center bg-input p-4 rounded-xl">
+                                    <p className="font-medium text-secondary">{method}</p>
+                                    <p className="text-lg font-bold text-base">BDT {parseFloat(balance).toFixed(2)}</p>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            );
+
+            const renderSettings = () => (
+                <div className="mt-8">
+                    <h2 className="text-2xl font-bold text-base mb-6">Settings</h2>
+                    <div className="bg-card p-6 rounded-3xl shadow-lg transition-colors space-y-8 card-lift-hover">
+                        <div>
+                            <h3 className="text-xl font-semibold mb-4 text-base">Theme</h3>
+                            <div className="flex gap-2">
+                                <button onClick={() => setTheme('light')} className={`px-4 py-2 rounded-full font-semibold text-sm transition-colors press-effect ${theme === 'light' ? 'bg-primary text-white' : 'bg-input text-secondary hover:bg-gray-300 dark:hover:bg-gray-700'}`}>Light</button>
+                                <button onClick={() => setTheme('dark')} className={`px-4 py-2 rounded-full font-semibold text-sm transition-colors press-effect ${theme === 'dark' ? 'bg-primary text-white' : 'bg-input text-secondary hover:bg-gray-300 dark:hover:bg-gray-700'}`}>Dark</button>
+                            </div>
+                        </div>
+                        <div>
+                            <h3 className="text-xl font-semibold mb-4 text-base">Primary Color</h3>
+                            <div className="flex flex-wrap gap-2">
+                                {['37, 99, 235', '22, 163, 74', '234, 179, 8', '244, 63, 94', '139, 92, 246'].map((color) => (
+                                    <button key={color} onClick={() => setPrimaryColor(color)} className={`w-10 h-10 rounded-full border-2 transition-transform transform press-effect ${primaryColor === color ? 'scale-110 ring-2 ring-offset-2 ring-primary' : ''}`} style={{ backgroundColor: `rgb(${color})` }}></button>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+
+            const handleSettingsToggle = () => { setView(view === 'settings' ? 'dashboard' : 'settings'); };
+
+            return (
+                <div className="min-h-screen bg-base font-sans flex flex-col items-center p-4 app-wrapper transition-colors" style={{paddingBottom: 'calc(var(--nav-height) + 56px)'}}>
+                    {message && (
+                        <div className={`fixed top-4 left-1/2 -translate-x-1/2 px-6 py-3 rounded-full text-white font-semibold shadow-lg z-50 transition-transform transform ${messageType === 'success' ? 'bg-green-500' : 'bg-red-500'}`}>
+                            {message}
+                        </div>
+                    )}
+
+                    <div className="w-full max-w-md">
+                        <div className="flex justify-between items-center mb-6 mt-4">
+                            <h1 className="text-3xl font-bold text-base">Expense Tracker</h1>
+                            <button onClick={handleSettingsToggle} className="p-3 rounded-full bg-input text-base transition-colors shadow-inner icon-bounce" aria-label="Settings">
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.3-.874-3.012.637-2.32 2.222.28.694-.035 1.46-.723 1.745-1.56.623-1.56 2.623 0 3.246.688.285 1.003 1.05.723 1.745-.69.967.433 2.14 1.723 1.517.97-.367 2.155.352 2.522 1.328.38 1.56 2.6 1.56 2.98 0 .38-1.56 2.6-1.56 2.98 0a1.532 1.532 0 012.286-.948c1.3-.874 3.012.637 2.32 2.222-.28.694.035 1.46.723 1.745.623 1.56.623 2.623 0 3.246-.285.688-1.05 1.003-1.745.723-.967-.69-2.14.433-1.517 1.723.367.97-.352 2.155-1.328 2.522-1.56.38-1.56 2.6-.0 2.98.0-.38.0-.0-.0-.0z" clipRule="evenodd" /></svg>
+                            </button>
+                        </div>
+
+                        {view === 'dashboard' && renderDashboard()}
+                        {view === 'form' && renderForm()}
+                        {view === 'list' && renderList()}
+                        {view === 'settings' && renderSettings()}
+                    </div>
+
+                    <div className="fixed bottom-0 left-0 w-full bg-card shadow-2xl rounded-t-3xl py-4 px-8 flex justify-between items-center transition-colors" style={{height: 'var(--nav-height)'}}>
+                        <button onClick={() => setView('dashboard')} className={`flex flex-col items-center text-sm font-medium transition-colors icon-bounce ${view === 'dashboard' ? 'text-primary' : 'text-secondary hover:text-base'}`}>
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 20 20" fill="currentColor"><path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z" /></svg>
+                            <span>Dashboard</span>
+                        </button>
+                        <button onClick={() => setView('list')} className={`flex flex-col items-center text-sm font-medium transition-colors icon-bounce ${view === 'list' ? 'text-primary' : 'text-secondary hover:text-base'}`}>
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 20 20" fill="currentColor"><path d="M7 3a1 1 0 000 2h6a1 1 0 100-2H7zM4 7a1 1 0 011-1h10a1 1 0 110 2H5a1 1 0 01-1-1zM6 10a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zM4 13a1 1 0 011-1h6a1 1 0 110 2H5a1 1 0 01-1-1z" /></svg>
+                            <span>Recent</span>
+                        </button>
+                    </div>
+
+                    {view !== 'form' && (
+                        <button
+                            onClick={() => setView('form')}
+                            aria-label="Add Expense"
+                            className="fixed right-6 p-4 bg-primary text-white rounded-full shadow-lg transition-transform transform press-effect z-40 liquid-button"
+                            style={{ bottom: 'calc(var(--nav-height) + 18px)' }}
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clipRule="evenodd" /></svg>
+                        </button>
+                    )}
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
